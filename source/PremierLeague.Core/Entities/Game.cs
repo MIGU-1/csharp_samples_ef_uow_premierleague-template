@@ -22,7 +22,11 @@ namespace PremierLeague.Core.Entities
         public int HomeGoals { get; set; }
         public int GuestGoals { get; set; }
 
-
+        public Game()
+        {
+            HomeTeam = new Team();
+            GuestTeam = new Team();
+        }
     }
 }
 

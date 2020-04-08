@@ -5,6 +5,9 @@ using PremierLeague.Persistence;
 using Serilog;
 using System;
 using System.Linq;
+using ConsoleTableExt;
+using System.Collections.Generic;
+using PremierLeague.Core.DataTransferObjects;
 
 namespace PremierLeague.ImportConsole
 {
@@ -52,11 +55,9 @@ namespace PremierLeague.ImportConsole
                 Log.Information("Import der Spiele und Teams in die Datenbank");
 
                 Log.Information("Datenbank löschen");
-                // TODO: Datenbank löschen
-
+                unitOfWork.DeleteDatabase();
                 Log.Information("Datenbank migrieren");
-                // TODO: Datenbank migrieren
-
+                unitOfWork.MigrateDatabase();
                 Log.Information("Spiele werden von premierleague.csv eingelesen");
                 var games = ImportController.ReadFromCsv().ToArray();
                 if (games.Length == 0)
@@ -68,20 +69,110 @@ namespace PremierLeague.ImportConsole
                     Log.Debug($"  Es wurden {games.Count()} Spiele eingelesen!");
 
                     // TODO: Teams aus den Games ermitteln
-                    var teams = Enumerable.Empty<Team>();
+                    var teams = games
+                        .Select(g => g.HomeTeam)
+                        .Distinct()
+                        .OrderBy(t => t.Name);
+
                     Log.Debug($"  Es wurden {teams.Count()} Teams eingelesen!");
 
                     Log.Information("Daten werden in Datenbank gespeichert (in Context übertragen)");
 
+                    unitOfWork.Games.AddRange(games);
                     // TODO: Teams/Games in der Datenbank speichern
                     Log.Information("Daten wurden in DB gespeichert!");
+
+                    unitOfWork.SaveChanges();
                 }
             }
         }
 
         private static void AnalyzeData()
         {
-            throw new NotImplementedException();
+            using (IUnitOfWork uow = new UnitOfWork())
+            {
+                (Team, int) maxGoalSum = uow.Teams.GetMaxGoalSum();
+                PrintResult("Das Team mit den meisten Toren", $"{maxGoalSum.Item1.ToString()} : {maxGoalSum.Item2}");
+
+                (Team, int) maxGuestGoals = uow.Teams.GetMaxGuestGoals();
+                PrintResult("Das Team mit den mesiten Auswärtstoren", $"{maxGuestGoals.Item1.ToString()} : {maxGuestGoals.Item2}");
+
+                (Team, int) maxHomeGoals = uow.Teams.GetMaxHomeGoals();
+                PrintResult("Das Team mit den mesiten Auswärtstoren", $"{maxHomeGoals.Item1.ToString()} : {maxHomeGoals.Item2}");
+
+                (Team, int) bestGoalRelation = uow.Teams.GetBestGoalRelation();
+                PrintResult("Das Team mit den mesiten Auswärtstoren", $"{bestGoalRelation.Item1.ToString()} : {bestGoalRelation.Item2}");
+
+                List<(Team, double, double, double, double, double, double)> teamPerformance = uow.Teams.GetTeamPerformance();
+                ConsoleTableBuilder.From(teamPerformance
+                .Select(o => new object[]
+                {
+                        o.Item1.Name,
+                        o.Item2,
+                        o.Item3,
+                        o.Item4,
+                        o.Item5,
+                        o.Item6,
+                        o.Item7
+                })
+                .ToList())
+                .WithColumn(
+                    "Name",
+                    "AVG1",
+                    "AVG2",
+                    "AVG3",
+                    "AVG4",
+                    "AVG5",
+                    "AVG6"
+                )
+                .WithFormat(ConsoleTableBuilderFormat.MarkDown)
+                .WithOptions(new ConsoleTableBuilderOption { DividerString = "" })
+                .ExportAndWrite();
+
+                Console.WriteLine();
+                Console.WriteLine();
+
+                List<TeamTableRowDto> teamTable = uow.Teams.GetStandingsTable();
+
+                for(int i = 0; i < teamTable.Count; i++)
+                {
+                    teamTable[i].Rank = i + 1;
+                }
+
+                ConsoleTableBuilder
+                    .From(teamTable
+                    .Select(o => new object[]
+                    {
+                        o.Id,
+                        o.Rank,
+                        o.Name,
+                        o.Points,
+                        o.Matches,
+                        o.Won,
+                        o.Lost,
+                        o.Drawn,
+                        o.GoalsFor,
+                        o.GoalsAgainst,
+                        o.GoalDifference
+                    })
+                    .ToList())
+                    .WithColumn(
+                        "ID",
+                        "RANK",
+                        "NAME",
+                        "PUNKTE",
+                        "MATCHES",
+                        "GEWONNEN",
+                        "VERLOREN",
+                        "UNENTSCHIEDEN",
+                        "TORE GESCHOSSEN",
+                        "TORE BEKOMMEN",
+                        "TOR DIFFERENZ"
+                    )
+                    .WithFormat(ConsoleTableBuilderFormat.MarkDown)
+                    .WithOptions(new ConsoleTableBuilderOption { DividerString = "" })
+                    .ExportAndWrite();
+            }
         }
 
         /// <summary>

@@ -15,6 +15,11 @@ namespace PremierLeague.Core.Entities
         [InverseProperty("GuestTeam")]
         public ICollection<Game> AwayGames { get; set; }
 
+        public Team()
+        {
+            HomeGames = new List<Game>();
+            AwayGames = new List<Game>();
+        }
         public override string ToString()
         {
             return $"{Name}";
